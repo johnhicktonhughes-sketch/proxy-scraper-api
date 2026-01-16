@@ -5,7 +5,7 @@ import os
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
@@ -16,6 +16,8 @@ from app.schemas import (
     ScrapeTaskOut,
     ScrapeTaskUpdate,
     EasyliveAuctionAnalytics,
+    EasyliveAuctionAnalyticsResponse,
+    ScrapeTaskStatusSummary,
 )
 
 
@@ -156,11 +158,25 @@ def delete_scrape_task(task_id: int, db: Session = Depends(get_db)):
     db.commit()
 
 
-@app.get("/analytics/easylive/auctions", response_model=list[EasyliveAuctionAnalytics])
+@app.get(
+    "/analytics/easylive/auctions", response_model=EasyliveAuctionAnalyticsResponse
+)
 def list_easylive_auction_analytics(
     db: Session = Depends(get_db),
     limit: int = Query(100, ge=1, le=1000),
 ):
+    status_counts = dict(
+        db.query(ScrapeTask.status, func.count(ScrapeTask.id))
+        .group_by(ScrapeTask.status)
+        .all()
+    )
+    summary = ScrapeTaskStatusSummary(
+        total=sum(status_counts.values()),
+        pending=status_counts.get("pending", 0),
+        running=status_counts.get("running", 0),
+        done=status_counts.get("done", 0),
+        failed=status_counts.get("failed", 0),
+    )
     query = text(
         """
         WITH base AS (
@@ -187,4 +203,7 @@ def list_easylive_auction_analytics(
         """
     )
     rows = db.execute(query, {"limit": limit}).mappings().all()
-    return [EasyliveAuctionAnalytics(**row) for row in rows]
+    return {
+        "summary": summary,
+        "items": [EasyliveAuctionAnalytics(**row) for row in rows],
+    }

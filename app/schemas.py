@@ -58,3 +58,16 @@ class EasyliveAuctionAnalytics(BaseModel):
     slug: str | None = None
     run_count: int
     lots_scraped: int | None = None
+
+
+class ScrapeTaskStatusSummary(BaseModel):
+    total: int
+    pending: int
+    running: int
+    done: int
+    failed: int
+
+
+class EasyliveAuctionAnalyticsResponse(BaseModel):
+    summary: ScrapeTaskStatusSummary
+    items: list[EasyliveAuctionAnalytics]
