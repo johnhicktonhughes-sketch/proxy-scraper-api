@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ScrapeTaskBase(BaseModel):
@@ -43,8 +43,7 @@ class ScrapeTaskOut(ScrapeTaskBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ScrapeTaskListResponse(BaseModel):

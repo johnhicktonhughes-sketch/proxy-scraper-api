@@ -102,7 +102,7 @@ def get_scrape_task(task_id: int, db: Session = Depends(get_db)):
 
 @app.post("/scrape_tasks", response_model=ScrapeTaskOut, status_code=201)
 def create_scrape_task(payload: ScrapeTaskCreate, db: Session = Depends(get_db)):
-    data = payload.dict(exclude_unset=True)
+    data = payload.model_dump(exclude_unset=True)
     task = ScrapeTask(**data)
     db.add(task)
     db.commit()
@@ -118,7 +118,7 @@ def update_scrape_task(
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
-    data = payload.dict(exclude_unset=True)
+    data = payload.model_dump(exclude_unset=True)
     if data.get("meta") is None and "meta" in data:
         data.pop("meta")
 
