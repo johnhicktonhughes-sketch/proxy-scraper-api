@@ -49,3 +49,11 @@ class ScrapeTaskOut(ScrapeTaskBase):
 class ScrapeTaskListResponse(BaseModel):
     total: int
     items: list[ScrapeTaskOut]
+
+
+class EasyliveAuctionAnalytics(BaseModel):
+    catalogue_id: str
+    auction_id: str
+    slug: str | None = None
+    run_count: int
+    lots_scraped: int | None = None

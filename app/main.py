@@ -4,6 +4,7 @@ from typing import List, Literal
 import os
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
@@ -13,6 +14,7 @@ from app.schemas import (
     ScrapeTaskListResponse,
     ScrapeTaskOut,
     ScrapeTaskUpdate,
+    EasyliveAuctionAnalytics,
 )
 
 
@@ -143,3 +145,36 @@ def delete_scrape_task(task_id: int, db: Session = Depends(get_db)):
         )
     db.delete(task)
     db.commit()
+
+
+@app.get("/analytics/easylive/auctions", response_model=list[EasyliveAuctionAnalytics])
+def list_easylive_auction_analytics(
+    db: Session = Depends(get_db),
+    limit: int = Query(100, ge=1, le=1000),
+):
+    query = text(
+        """
+        WITH base AS (
+            SELECT
+                split_part(tr.url, '?', 1) AS url_no_query,
+                tr.stats
+            FROM scrape_tasks st
+            JOIN task_runs tr ON tr.task_id = st.id
+            WHERE st.task_type = 'catalogue'
+              AND st.site = 'easylive'
+              AND tr.url LIKE '%/catalogue/%'
+        )
+        SELECT
+            split_part(split_part(url_no_query, 'catalogue/', 2), '/', 1) AS catalogue_id,
+            split_part(split_part(url_no_query, 'catalogue/', 2), '/', 2) AS auction_id,
+            NULLIF(split_part(split_part(url_no_query, 'catalogue/', 2), '/', 3), '') AS slug,
+            COUNT(*) AS run_count,
+            SUM((stats->>'lots_found')::int) AS lots_scraped
+        FROM base
+        GROUP BY 1, 2, 3
+        ORDER BY lots_scraped DESC NULLS LAST
+        LIMIT :limit
+        """
+    )
+    rows = db.execute(query, {"limit": limit}).mappings().all()
+    return [EasyliveAuctionAnalytics(**row) for row in rows]
