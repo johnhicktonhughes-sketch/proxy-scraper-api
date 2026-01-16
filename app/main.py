@@ -165,13 +165,14 @@ def list_easylive_auction_analytics(
               AND tr.url LIKE '%/catalogue/%'
         )
         SELECT
+            url_no_query,
             split_part(split_part(url_no_query, 'catalogue/', 2), '/', 1) AS catalogue_id,
             split_part(split_part(url_no_query, 'catalogue/', 2), '/', 2) AS auction_id,
             NULLIF(split_part(split_part(url_no_query, 'catalogue/', 2), '/', 3), '') AS slug,
             COUNT(*) AS run_count,
             SUM((stats->>'lots_found')::int) AS lots_scraped
         FROM base
-        GROUP BY 1, 2, 3
+        GROUP BY 1, 2, 3, 4
         ORDER BY lots_scraped DESC NULLS LAST
         LIMIT :limit
         """

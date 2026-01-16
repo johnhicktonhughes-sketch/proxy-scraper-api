@@ -52,6 +52,7 @@ class ScrapeTaskListResponse(BaseModel):
 
 
 class EasyliveAuctionAnalytics(BaseModel):
+    url_no_query: str
     catalogue_id: str
     auction_id: str
     slug: str | None = None
