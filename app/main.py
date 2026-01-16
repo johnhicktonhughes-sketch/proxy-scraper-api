@@ -4,6 +4,7 @@ from typing import List, Literal
 import os
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -39,6 +40,12 @@ def require_api_key(x_api_key: str = Header(..., alias="X-API-Key")) -> None:
 
 
 app = FastAPI(title="Scrape Tasks API", dependencies=[Depends(require_api_key)])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def get_db() -> Session:
@@ -105,6 +112,8 @@ def get_scrape_task(task_id: int, db: Session = Depends(get_db)):
 @app.post("/scrape_tasks", response_model=ScrapeTaskOut, status_code=201)
 def create_scrape_task(payload: ScrapeTaskCreate, db: Session = Depends(get_db)):
     data = payload.model_dump(exclude_unset=True)
+    if data.get("status") is None:
+        data["status"] = "pending"
     task = ScrapeTask(**data)
     db.add(task)
     db.commit()
