@@ -3,8 +3,9 @@ from typing import List, Literal
 
 import os
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import APIKeyHeader
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,12 @@ from app.schemas import (
 )
 
 
+api_key_header = APIKeyHeader(
+    name="X-API-Key",
+    auto_error=False,
+    description="API key required to access endpoints.",
+)
+
 ENUMS = {
     "site": ["easylive", "the_saleroom"],
     "task_type": ["discover", "listing", "rescrape", "catalogue"],
@@ -28,14 +35,14 @@ ENUMS = {
 }
 
 
-def require_api_key(x_api_key: str = Header(..., alias="X-API-Key")) -> None:
+def require_api_key(api_key: str | None = Depends(api_key_header)) -> None:
     expected = os.getenv("API_KEY")
     if not expected:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="API_KEY is not configured",
         )
-    if x_api_key != expected:
+    if api_key != expected:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
         )
