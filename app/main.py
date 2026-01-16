@@ -232,3 +232,21 @@ def list_easylive_auction_analytics(
         "summary": summary,
         "items": [EasyliveAuctionAnalytics(**row) for row in rows],
     }
+
+
+@app.get("/analytics/scrape_tasks/pending_future", response_model=ScrapeTaskListResponse)
+def list_pending_future_tasks(
+    db: Session = Depends(get_db),
+    limit: int = Query(100, ge=1, le=500),
+):
+    now = datetime.now(timezone.utc)
+    query = (
+        db.query(ScrapeTask)
+        .filter(ScrapeTask.status == "pending")
+        .filter(ScrapeTask.scheduled_at.isnot(None))
+        .filter(ScrapeTask.scheduled_at > now)
+        .order_by(ScrapeTask.scheduled_at.asc().nulls_last())
+    )
+    total = query.count()
+    items = query.limit(limit).all()
+    return {"total": total, "items": items}
