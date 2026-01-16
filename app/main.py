@@ -103,6 +103,24 @@ def get_scrape_task_enums():
     return ENUMS
 
 
+@app.get("/scrape_tasks/next_pending", response_model=ScrapeTaskListResponse)
+def list_next_pending_tasks(
+    db: Session = Depends(get_db),
+    limit: int = Query(100, ge=1, le=500),
+):
+    now = datetime.now(timezone.utc)
+    query = (
+        db.query(ScrapeTask)
+        .filter(ScrapeTask.status == "pending")
+        .filter(ScrapeTask.scheduled_at.isnot(None))
+        .filter(ScrapeTask.scheduled_at <= now)
+        .order_by(ScrapeTask.scheduled_at.asc().nulls_last())
+    )
+    total = query.count()
+    items = query.limit(limit).all()
+    return {"total": total, "items": items}
+
+
 @app.get("/scrape_tasks/{task_id}", response_model=ScrapeTaskOut)
 def get_scrape_task(task_id: int, db: Session = Depends(get_db)):
     task = db.query(ScrapeTask).filter(ScrapeTask.id == task_id).first()
