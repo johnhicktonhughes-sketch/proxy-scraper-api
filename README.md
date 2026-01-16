@@ -52,3 +52,15 @@ curl -H "X-API-Key: change-me" http://127.0.0.1:8000/scrape_tasks
   "items": []
 }
 ```
+
+## Deploy (Railway)
+
+1) Create a new Railway project from this repo.
+2) Add environment variables:
+   - `DATABASE_URL` (Railway Postgres connection string)
+   - `API_KEY`
+3) Set the start command:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
