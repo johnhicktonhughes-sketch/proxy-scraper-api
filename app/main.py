@@ -316,7 +316,7 @@ def list_easylive_auctioneer_lots(db: Session = Depends(get_db)):
             MAX(ls.created_at) AS latest_snapshot_created_at
         {base_sql}
         GROUP BY tr.auctioneer_name
-        ORDER BY latest_snapshot_created_at DESC NULLS LAST
+        ORDER BY distinct_lots DESC
         """
     )
     total_query = text(f"SELECT COUNT(DISTINCT l.id) {base_sql}")
