@@ -52,12 +52,13 @@ class ScrapeTaskListResponse(BaseModel):
 
 
 class EasyliveAuctionAnalytics(BaseModel):
-    url_no_query: str
+    auctioneer_name: str | None = None
     catalogue_id: str
     auction_id: str
     slug: str | None = None
     run_count: int
     lots_scraped: int | None = None
+    hammer_prices_found: int | None = None
 
 
 class ScrapeTaskStatusSummary(BaseModel):
@@ -71,3 +72,19 @@ class ScrapeTaskStatusSummary(BaseModel):
 class EasyliveAuctionAnalyticsResponse(BaseModel):
     summary: ScrapeTaskStatusSummary
     items: list[EasyliveAuctionAnalytics]
+
+
+class ListingSnapshotResponse(BaseModel):
+    total: int
+    items: list[Dict[str, Any]]
+
+
+class AuctioneerLotsSummary(BaseModel):
+    auctioneer_name: str | None = None
+    distinct_lots: int
+    latest_snapshot_created_at: datetime | None = None
+
+
+class AuctioneerLotsResponse(BaseModel):
+    total_lots: int
+    items: list[AuctioneerLotsSummary]

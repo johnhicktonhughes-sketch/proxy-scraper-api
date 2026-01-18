@@ -6,7 +6,7 @@ import os
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
-from sqlalchemy import func, text
+from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
@@ -19,6 +19,9 @@ from app.schemas import (
     EasyliveAuctionAnalytics,
     EasyliveAuctionAnalyticsResponse,
     ScrapeTaskStatusSummary,
+    ListingSnapshotResponse,
+    AuctioneerLotsResponse,
+    AuctioneerLotsSummary,
 )
 
 
@@ -119,8 +122,7 @@ def list_next_pending_tasks(
     query = (
         db.query(ScrapeTask)
         .filter(ScrapeTask.status == "pending")
-        .filter(ScrapeTask.scheduled_at.isnot(None))
-        .filter(ScrapeTask.scheduled_at <= now)
+        .filter(or_(ScrapeTask.scheduled_at.is_(None), ScrapeTask.scheduled_at <= now))
         .order_by(ScrapeTask.scheduled_at.asc().nulls_last())
     )
     total = query.count()
@@ -207,6 +209,7 @@ def list_easylive_auction_analytics(
         WITH base AS (
             SELECT
                 split_part(tr.url, '?', 1) AS url_no_query,
+                tr.auctioneer_name,
                 tr.stats
             FROM scrape_tasks st
             JOIN task_runs tr ON tr.task_id = st.id
@@ -215,12 +218,13 @@ def list_easylive_auction_analytics(
               AND tr.url LIKE '%/catalogue/%'
         )
         SELECT
-            url_no_query,
+            auctioneer_name,
             split_part(split_part(url_no_query, 'catalogue/', 2), '/', 1) AS catalogue_id,
             split_part(split_part(url_no_query, 'catalogue/', 2), '/', 2) AS auction_id,
             NULLIF(split_part(split_part(url_no_query, 'catalogue/', 2), '/', 3), '') AS slug,
             COUNT(*) AS run_count,
-            SUM((stats->>'lots_found')::int) AS lots_scraped
+            SUM((stats->>'lots_found')::int) AS lots_scraped,
+            SUM((stats->>'hammer_prices_found')::int) AS hammer_prices_found
         FROM base
         GROUP BY 1, 2, 3, 4
         ORDER BY lots_scraped DESC NULLS LAST
@@ -250,3 +254,75 @@ def list_pending_future_tasks(
     total = query.count()
     items = query.limit(limit).all()
     return {"total": total, "items": items}
+
+
+@app.get(
+    "/listing_snapshots/by_catalogue", response_model=ListingSnapshotResponse
+)
+def list_listing_snapshots_by_catalogue(
+    catalogue_url: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    base_sql = """
+        FROM task_runs tr
+        JOIN listing_task_runs ltr ON ltr.task_run_id = tr.id
+        JOIN listings l ON l.id = ltr.listing_id
+        JOIN listing_snapshots ls ON ls.listing_id = l.id
+        LEFT JOIN scrape_tasks st ON st.id = tr.task_id
+        WHERE tr.url = :catalogue_url OR st.url = :catalogue_url
+    """
+    count_query = text(f"SELECT COUNT(*) {base_sql}")
+    total = db.execute(count_query, {"catalogue_url": catalogue_url}).scalar() or 0
+
+    items_query = text(
+        f"""
+        SELECT
+            ls.*,
+            l.id AS listing_id,
+            ltr.task_run_id AS task_run_id,
+            tr.url AS task_run_url,
+            st.id AS scrape_task_id,
+            st.url AS scrape_task_url
+        {base_sql}
+        ORDER BY ls.id DESC
+        LIMIT :limit OFFSET :offset
+        """
+    )
+    rows = db.execute(
+        items_query,
+        {"catalogue_url": catalogue_url, "limit": limit, "offset": offset},
+    ).mappings().all()
+    return {"total": total, "items": [dict(row) for row in rows]}
+
+
+@app.get(
+    "/analytics/easylive/auctioneer_lots", response_model=AuctioneerLotsResponse
+)
+def list_easylive_auctioneer_lots(db: Session = Depends(get_db)):
+    base_sql = """
+        FROM task_runs tr
+        JOIN listing_task_runs ltr ON ltr.task_run_id = tr.id
+        JOIN listings l ON l.id = ltr.listing_id
+        JOIN listing_snapshots ls ON ls.listing_id = l.id
+        WHERE tr.auctioneer_name IS NOT NULL
+    """
+    items_query = text(
+        f"""
+        SELECT
+            tr.auctioneer_name,
+            COUNT(DISTINCT l.id) AS distinct_lots,
+            MAX(ls.created_at) AS latest_snapshot_created_at
+        {base_sql}
+        GROUP BY tr.auctioneer_name
+        ORDER BY latest_snapshot_created_at DESC NULLS LAST
+        """
+    )
+    total_query = text(f"SELECT COUNT(DISTINCT l.id) {base_sql}")
+    rows = db.execute(items_query).mappings().all()
+    total_lots = db.execute(total_query).scalar() or 0
+    return {
+        "total_lots": total_lots,
+        "items": [AuctioneerLotsSummary(**row) for row in rows],
+    }
