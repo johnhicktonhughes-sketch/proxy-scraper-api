@@ -22,6 +22,7 @@ from app.schemas import (
     ListingSnapshotResponse,
     AuctioneerLotsResponse,
     AuctioneerLotsSummary,
+    ListingResponse,
 )
 
 
@@ -326,3 +327,35 @@ def list_easylive_auctioneer_lots(db: Session = Depends(get_db)):
         "total_lots": total_lots,
         "items": [AuctioneerLotsSummary(**row) for row in rows],
     }
+
+
+@app.get("/listings/by_auctioneer", response_model=ListingResponse)
+def list_listings_by_auctioneer(
+    auctioneer_name: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    base_sql = """
+        FROM task_runs tr
+        JOIN listing_task_runs ltr ON ltr.task_run_id = tr.id
+        JOIN listings l ON l.id = ltr.listing_id
+        WHERE tr.auctioneer_name = :auctioneer_name
+    """
+    count_query = text(f"SELECT COUNT(DISTINCT l.id) {base_sql}")
+    total = (
+        db.execute(count_query, {"auctioneer_name": auctioneer_name}).scalar() or 0
+    )
+    items_query = text(
+        f"""
+        SELECT DISTINCT l.*
+        {base_sql}
+        ORDER BY l.id DESC
+        LIMIT :limit OFFSET :offset
+        """
+    )
+    rows = db.execute(
+        items_query,
+        {"auctioneer_name": auctioneer_name, "limit": limit, "offset": offset},
+    ).mappings().all()
+    return {"total": total, "items": [dict(row) for row in rows]}
