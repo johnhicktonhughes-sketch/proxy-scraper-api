@@ -23,6 +23,7 @@ from app.schemas import (
     AuctioneerLotsResponse,
     AuctioneerLotsSummary,
     ListingResponse,
+    AuctioneerNameListResponse,
 )
 
 
@@ -359,3 +360,23 @@ def list_listings_by_auctioneer(
         {"auctioneer_name": auctioneer_name, "limit": limit, "offset": offset},
     ).mappings().all()
     return {"total": total, "items": [dict(row) for row in rows]}
+
+
+@app.get("/listings/auctioneers", response_model=AuctioneerNameListResponse)
+def list_listing_auctioneers(
+    db: Session = Depends(get_db),
+    limit: int = Query(1000, ge=1, le=5000),
+):
+    query = text(
+        """
+        SELECT DISTINCT tr.auctioneer_name
+        FROM task_runs tr
+        WHERE tr.auctioneer_name IS NOT NULL
+          AND trim(tr.auctioneer_name) <> ''
+        ORDER BY tr.auctioneer_name ASC
+        LIMIT :limit
+        """
+    )
+    rows = db.execute(query, {"limit": limit}).all()
+    names = [row[0] for row in rows]
+    return {"total": len(names), "items": names}
