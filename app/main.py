@@ -341,15 +341,25 @@ def list_listings_by_auctioneer(
         FROM task_runs tr
         JOIN listing_task_runs ltr ON ltr.task_run_id = tr.id
         JOIN listings l ON l.id = ltr.listing_id
-        WHERE tr.auctioneer_name = :auctioneer_name
+        JOIN listing_snapshots ls ON ls.listing_id = l.id
+        WHERE tr.auctioneer_name = :auctioneer
     """
-    count_query = text(f"SELECT COUNT(DISTINCT l.id) {base_sql}")
-    total = (
-        db.execute(count_query, {"auctioneer_name": auctioneer_name}).scalar() or 0
+    distinct_count_query = text(f"SELECT COUNT(DISTINCT l.id) {base_sql}")
+    total_listings = (
+        db.execute(distinct_count_query, {"auctioneer": auctioneer_name}).scalar() or 0
+    )
+    snapshot_count_query = text(f"SELECT COUNT(*) {base_sql}")
+    total_snapshots = (
+        db.execute(snapshot_count_query, {"auctioneer": auctioneer_name}).scalar() or 0
     )
     items_query = text(
         f"""
         SELECT DISTINCT l.*
+            , ls.data->>'estimate_low' as est_lo
+            , ls.data->>'estimate_high' as est_hi
+            , ls.data->'auction_end' as ended
+            , ls.data->'sold_price' as sold
+            , ls.data
         {base_sql}
         ORDER BY l.id DESC
         LIMIT :limit OFFSET :offset
@@ -357,9 +367,13 @@ def list_listings_by_auctioneer(
     )
     rows = db.execute(
         items_query,
-        {"auctioneer_name": auctioneer_name, "limit": limit, "offset": offset},
+        {"auctioneer": auctioneer_name, "limit": limit, "offset": offset},
     ).mappings().all()
-    return {"total": total, "items": [dict(row) for row in rows]}
+    return {
+        "total": total_listings,
+        "total_snapshots": total_snapshots,
+        "items": [dict(row) for row in rows],
+    }
 
 
 @app.get("/listings/auctioneers", response_model=AuctioneerNameListResponse)

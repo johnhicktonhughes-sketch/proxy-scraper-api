@@ -92,6 +92,7 @@ class AuctioneerLotsResponse(BaseModel):
 
 class ListingResponse(BaseModel):
     total: int
+    total_snapshots: int
     items: list[Dict[str, Any]]
 
 
