@@ -35,7 +35,7 @@ api_key_header = APIKeyHeader(
 
 ENUMS = {
     "site": ["easylive", "the_saleroom"],
-    "task_type": ["discover", "listing", "rescrape", "catalogue"],
+    "task_type": ["discover", "listing", "rescrape", "catalogue", "auction_times"],
     "status": ["pending", "running", "done", "failed"],
 }
 
@@ -111,8 +111,17 @@ def list_scrape_tasks(
 
 
 @app.get("/scrape_tasks/enums")
-def get_scrape_task_enums():
-    return ENUMS
+def get_scrape_task_enums(db: Session = Depends(get_db)):
+    auction_times = [
+        row[0]
+        for row in db.query(ScrapeTask.meta["auction_time"].astext)
+        .filter(ScrapeTask.meta["auction_time"].astext.isnot(None))
+        .filter(ScrapeTask.meta["auction_time"].astext != "")
+        .distinct()
+        .order_by(ScrapeTask.meta["auction_time"].astext.asc())
+        .all()
+    ]
+    return {**ENUMS, "auction_times": auction_times}
 
 
 @app.get("/scrape_tasks/next_pending", response_model=ScrapeTaskListResponse)
