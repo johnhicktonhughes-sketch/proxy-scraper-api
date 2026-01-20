@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class ScrapeTaskBase(BaseModel):
     site: Literal["easylive", "the_saleroom"]
     url: str
-    task_type: Literal["discover", "listing", "rescrape", "catalogue"]
+    task_type: Literal["discover", "listing", "rescrape", "catalogue", "auction_times"]
     status: Optional[Literal["pending", "running", "done", "failed"]] = None
     scheduled_at: Optional[datetime] = None
     locked_at: Optional[datetime] = None
@@ -24,7 +24,9 @@ class ScrapeTaskCreate(ScrapeTaskBase):
 class ScrapeTaskUpdate(BaseModel):
     site: Optional[Literal["easylive", "the_saleroom"]] = None
     url: Optional[str] = None
-    task_type: Optional[Literal["discover", "listing", "rescrape", "catalogue"]] = None
+    task_type: Optional[
+        Literal["discover", "listing", "rescrape", "catalogue", "auction_times"]
+    ] = None
     status: Optional[Literal["pending", "running", "done", "failed"]] = None
     scheduled_at: Optional[datetime] = None
     locked_at: Optional[datetime] = None
