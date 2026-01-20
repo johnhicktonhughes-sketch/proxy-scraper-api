@@ -93,6 +93,10 @@ class AuctioneerLotsResponse(BaseModel):
 class ListingResponse(BaseModel):
     total: int
     total_snapshots: int
+    avg_estimate_low: float | None = None
+    avg_estimate_high: float | None = None
+    avg_sold_price: float | None = None
+    next_offset: int | None = None
     items: list[Dict[str, Any]]
 
 

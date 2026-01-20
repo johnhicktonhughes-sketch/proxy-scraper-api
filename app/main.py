@@ -352,6 +352,18 @@ def list_listings_by_auctioneer(
     total_snapshots = (
         db.execute(snapshot_count_query, {"auctioneer": auctioneer_name}).scalar() or 0
     )
+    averages_query = text(
+        f"""
+        SELECT
+            AVG(NULLIF(ls.data->>'estimate_low', '')::numeric) AS avg_estimate_low,
+            AVG(NULLIF(ls.data->>'estimate_high', '')::numeric) AS avg_estimate_high,
+            AVG(NULLIF(ls.data->>'sold_price', '')::numeric) AS avg_sold_price
+        {base_sql}
+        """
+    )
+    averages_row = (
+        db.execute(averages_query, {"auctioneer": auctioneer_name}).mappings().first()
+    ) or {}
     items_query = text(
         f"""
         SELECT DISTINCT l.*
@@ -369,9 +381,16 @@ def list_listings_by_auctioneer(
         items_query,
         {"auctioneer": auctioneer_name, "limit": limit, "offset": offset},
     ).mappings().all()
+    next_offset = None
+    if offset + len(rows) < total_listings:
+        next_offset = offset + len(rows)
     return {
         "total": total_listings,
         "total_snapshots": total_snapshots,
+        "avg_estimate_low": averages_row.get("avg_estimate_low"),
+        "avg_estimate_high": averages_row.get("avg_estimate_high"),
+        "avg_sold_price": averages_row.get("avg_sold_price"),
+        "next_offset": next_offset,
         "items": [dict(row) for row in rows],
     }
 
