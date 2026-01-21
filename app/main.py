@@ -202,7 +202,7 @@ def delete_scrape_task(task_id: int, db: Session = Depends(get_db)):
     db.commit()
 
 
-@app.delete("/scrape_tasks/related", status_code=204)
+@app.delete("/scrape_tasks/related/by_url", status_code=204)
 def delete_scrape_task_related_records(
     url: str = Query(...),
     dry_run: bool = Query(False),
