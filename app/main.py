@@ -23,6 +23,8 @@ from app.schemas import (
     ListingSnapshotResponse,
     AuctioneerLotsResponse,
     AuctioneerLotsSummary,
+    AuctioneerPriceSummary,
+    AuctioneerPriceSummaryResponse,
     ListingResponse,
     AuctioneerNameListResponse,
 )
@@ -354,6 +356,43 @@ def list_pending_future_tasks(
     total = query.count()
     items = query.limit(limit).all()
     return {"total": total, "items": items}
+
+
+@app.get(
+    "/analytics/auctioneers/prices",
+    response_model=AuctioneerPriceSummaryResponse,
+)
+def list_auctioneer_price_summary(db: Session = Depends(get_db)):
+    query = text(
+        """
+        WITH prices AS (
+            SELECT DISTINCT
+                l.*,
+                tr.auctioneer_name,
+                NULLIF(ls.data->>'estimate_low', '')::numeric AS est_lo,
+                NULLIF(ls.data->>'estimate_high', '')::numeric AS est_hi,
+                ls.data->'auction_end' AS ended,
+                NULLIF(ls.data->>'sold_price', '')::numeric AS sold,
+                ls.data
+            FROM task_runs tr
+            JOIN listing_task_runs ltr ON ltr.task_run_id = tr.id
+            JOIN listings l ON l.id = ltr.listing_id
+            JOIN listing_snapshots ls ON ls.listing_id = l.id
+            ORDER BY l.id DESC
+        )
+        SELECT
+            auctioneer_name,
+            COUNT(DISTINCT id) AS lots_analysed,
+            ROUND(AVG(est_lo), 2) AS est_lo,
+            ROUND(AVG(est_hi), 2) AS est_hi,
+            ROUND(AVG(sold), 2) AS sold
+        FROM prices
+        GROUP BY auctioneer_name
+        """
+    )
+    rows = db.execute(query).mappings().all()
+    items = [AuctioneerPriceSummary(**row) for row in rows]
+    return {"total": len(items), "items": items}
 
 
 @app.get(

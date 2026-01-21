@@ -92,6 +92,19 @@ class AuctioneerLotsResponse(BaseModel):
     items: list[AuctioneerLotsSummary]
 
 
+class AuctioneerPriceSummary(BaseModel):
+    auctioneer_name: str | None = None
+    lots_analysed: int
+    est_lo: float | None = None
+    est_hi: float | None = None
+    sold: float | None = None
+
+
+class AuctioneerPriceSummaryResponse(BaseModel):
+    total: int
+    items: list[AuctioneerPriceSummary]
+
+
 class ListingResponse(BaseModel):
     total: int
     total_snapshots: int
