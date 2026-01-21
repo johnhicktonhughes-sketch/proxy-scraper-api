@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import logging
 from typing import List, Literal
 
 import os
@@ -6,7 +7,7 @@ import os
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
-from sqlalchemy import func, or_, text
+from sqlalchemy import bindparam, func, or_, text
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
@@ -26,6 +27,8 @@ from app.schemas import (
     AuctioneerNameListResponse,
 )
 
+
+logger = logging.getLogger(__name__)
 
 api_key_header = APIKeyHeader(
     name="X-API-Key",
@@ -196,6 +199,88 @@ def delete_scrape_task(task_id: int, db: Session = Depends(get_db)):
             detail="Only pending or failed tasks can be deleted",
         )
     db.delete(task)
+    db.commit()
+
+
+@app.delete("/scrape_tasks/related", status_code=204)
+def delete_scrape_task_related_records(
+    url: str = Query(...),
+    dry_run: bool = Query(False),
+    db: Session = Depends(get_db),
+):
+    task_ids = [
+        row[0]
+        for row in db.execute(
+            text(
+                """
+                SELECT id
+                FROM scrape_tasks
+                WHERE url LIKE :url_pattern AND task_type = 'catalogue'
+                """
+            ),
+            {"url_pattern": f"{url}%"},
+        ).all()
+    ]
+    if not task_ids:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    if dry_run:
+        logger.info(
+            "Dry run delete /scrape_tasks/related url=%s task_ids=%s", url, task_ids
+        )
+        return
+
+    task_run_ids = [
+        row[0]
+        for row in db.execute(
+            text("SELECT id FROM task_runs WHERE task_id IN :task_ids").bindparams(
+                bindparam("task_ids", expanding=True)
+            ),
+            {"task_ids": task_ids},
+        ).all()
+    ]
+    listing_ids = [
+        row[0]
+        for row in db.execute(
+            text(
+                """
+                SELECT DISTINCT ltr.listing_id
+                FROM listing_task_runs ltr
+                JOIN task_runs tr ON tr.id = ltr.task_run_id
+                WHERE tr.task_id IN :task_ids
+                """
+            ).bindparams(bindparam("task_ids", expanding=True)),
+            {"task_ids": task_ids},
+        ).all()
+    ]
+
+    if task_run_ids:
+        db.execute(
+            text(
+                "DELETE FROM listing_task_runs WHERE task_run_id IN :task_run_ids"
+            ).bindparams(bindparam("task_run_ids", expanding=True)),
+            {"task_run_ids": task_run_ids},
+        )
+    if listing_ids:
+        db.execute(
+            text(
+                "DELETE FROM listing_snapshots WHERE listing_id IN :listing_ids"
+            ).bindparams(bindparam("listing_ids", expanding=True)),
+            {"listing_ids": listing_ids},
+        )
+        db.execute(
+            text("DELETE FROM listings WHERE id IN :listing_ids").bindparams(
+                bindparam("listing_ids", expanding=True)
+            ),
+            {"listing_ids": listing_ids},
+        )
+
+    if task_run_ids:
+        db.execute(
+            text("DELETE FROM task_runs WHERE id IN :task_run_ids").bindparams(
+                bindparam("task_run_ids", expanding=True)
+            ),
+            {"task_run_ids": task_run_ids},
+        )
     db.commit()
 
 
