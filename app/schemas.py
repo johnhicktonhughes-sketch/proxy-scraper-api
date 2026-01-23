@@ -53,6 +53,29 @@ class ScrapeTaskListResponse(BaseModel):
     items: list[ScrapeTaskOut]
 
 
+class FailedScrapeTask(BaseModel):
+    id: int
+    site: Literal["easylive", "the_saleroom"]
+    url: str
+    task_type: Literal["discover", "listing", "rescrape", "catalogue", "auction_times"]
+    status: Literal["failed"] = "failed"
+    scheduled_at: datetime | None = None
+    locked_at: datetime | None = None
+    attempts: int
+    max_attempts: int
+    failure_reason: str | None = None
+    meta: Dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FailedScrapeTaskListResponse(BaseModel):
+    total: int
+    items: list[FailedScrapeTask]
+
+
 class EasyliveAuctionAnalytics(BaseModel):
     auctioneer_name: str | None = None
     catalogue_id: str

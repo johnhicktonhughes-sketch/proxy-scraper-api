@@ -17,6 +17,8 @@ from app.schemas import (
     ScrapeTaskListResponse,
     ScrapeTaskOut,
     ScrapeTaskUpdate,
+    FailedScrapeTask,
+    FailedScrapeTaskListResponse,
     EasyliveAuctionAnalytics,
     EasyliveAuctionAnalyticsResponse,
     ScrapeTaskStatusSummary,
@@ -287,6 +289,23 @@ def delete_scrape_task_related_records(
     return {"task_ids": task_ids, "dry_run": False}
 
 
+@app.get("/scrape_tasks/related/by_url", response_model=ScrapeTaskListResponse)
+def list_scrape_tasks_related_by_url(
+    url: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    query = (
+        db.query(ScrapeTask)
+        .filter(ScrapeTask.url.like(f"{url}%"))
+        .order_by(ScrapeTask.created_at.desc())
+    )
+    total = query.count()
+    items = query.offset(offset).limit(limit).all()
+    return {"total": total, "items": items}
+
+
 @app.get(
     "/analytics/easylive/auctions", response_model=EasyliveAuctionAnalyticsResponse
 )
@@ -356,6 +375,78 @@ def list_pending_future_tasks(
     total = query.count()
     items = query.limit(limit).all()
     return {"total": total, "items": items}
+
+
+@app.get("/analytics/scrape_tasks/running", response_model=ScrapeTaskListResponse)
+def list_running_tasks(
+    db: Session = Depends(get_db),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    task_type: Literal[
+        "discover", "listing", "rescrape", "catalogue", "auction_times"
+    ]
+    | None = Query(None),
+    site: Literal["easylive", "the_saleroom"] | None = Query(None),
+):
+    query = db.query(ScrapeTask).filter(ScrapeTask.status == "running")
+    if task_type is not None:
+        query = query.filter(ScrapeTask.task_type == task_type)
+    if site is not None:
+        query = query.filter(ScrapeTask.site == site)
+    query = query.order_by(
+        ScrapeTask.updated_at.desc().nulls_last(),
+        ScrapeTask.created_at.desc(),
+    )
+    total = query.count()
+    items = query.offset(offset).limit(limit).all()
+    return {"total": total, "items": items}
+
+
+@app.get(
+    "/analytics/scrape_tasks/failed", response_model=FailedScrapeTaskListResponse
+)
+def list_failed_scrape_tasks(
+    db: Session = Depends(get_db),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    task_type: Literal[
+        "discover", "listing", "rescrape", "catalogue", "auction_times"
+    ]
+    | None = Query(None),
+    site: Literal["easylive", "the_saleroom"] | None = Query(None),
+):
+    query = db.query(ScrapeTask).filter(ScrapeTask.status == "failed")
+    if task_type is not None:
+        query = query.filter(ScrapeTask.task_type == task_type)
+    if site is not None:
+        query = query.filter(ScrapeTask.site == site)
+    query = query.order_by(
+        ScrapeTask.updated_at.desc().nulls_last(),
+        ScrapeTask.created_at.desc(),
+    )
+    total = query.count()
+    items = query.offset(offset).limit(limit).all()
+    return {
+        "total": total,
+        "items": [
+            FailedScrapeTask(
+                id=task.id,
+                site=task.site,
+                url=task.url,
+                task_type=task.task_type,
+                status=task.status,
+                scheduled_at=task.scheduled_at,
+                locked_at=task.locked_at,
+                attempts=task.attempts,
+                max_attempts=task.max_attempts,
+                failure_reason=task.last_error,
+                meta=task.meta,
+                created_at=task.created_at,
+                updated_at=task.updated_at,
+            )
+            for task in items
+        ],
+    }
 
 
 @app.get(
