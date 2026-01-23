@@ -101,6 +101,8 @@ class EasyliveAuctionAnalyticsResponse(BaseModel):
 
 class ListingSnapshotResponse(BaseModel):
     total: int
+    total_listings: int | None = None
+    next_offset: int | None = None
     items: list[Dict[str, Any]]
 
 

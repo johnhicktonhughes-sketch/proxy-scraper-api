@@ -504,9 +504,22 @@ def list_listing_snapshots_by_catalogue(
         WHERE tr.url LIKE :catalogue_url_pattern OR st.url = :catalogue_url
     """
     count_query = text(f"SELECT COUNT(*) {base_sql}")
+    distinct_listings_query = text(
+        f"SELECT COUNT(DISTINCT l.id) {base_sql}"
+    )
     total = (
         db.execute(
             count_query,
+            {
+                "catalogue_url": catalogue_url,
+                "catalogue_url_pattern": f"{catalogue_url}%",
+            },
+        ).scalar()
+        or 0
+    )
+    total_listings = (
+        db.execute(
+            distinct_listings_query,
             {
                 "catalogue_url": catalogue_url,
                 "catalogue_url_pattern": f"{catalogue_url}%",
@@ -538,7 +551,15 @@ def list_listing_snapshots_by_catalogue(
             "offset": offset,
         },
     ).mappings().all()
-    return {"total": total, "items": [dict(row) for row in rows]}
+    next_offset = None
+    if offset + len(rows) < total:
+        next_offset = offset + len(rows)
+    return {
+        "total": total,
+        "total_listings": total_listings,
+        "next_offset": next_offset,
+        "items": [dict(row) for row in rows],
+    }
 
 
 @app.get(
