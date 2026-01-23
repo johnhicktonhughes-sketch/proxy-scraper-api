@@ -501,10 +501,19 @@ def list_listing_snapshots_by_catalogue(
         JOIN listings l ON l.id = ltr.listing_id
         JOIN listing_snapshots ls ON ls.listing_id = l.id
         LEFT JOIN scrape_tasks st ON st.id = tr.task_id
-        WHERE tr.url = :catalogue_url OR st.url = :catalogue_url
+        WHERE tr.url LIKE :catalogue_url_pattern OR st.url = :catalogue_url
     """
     count_query = text(f"SELECT COUNT(*) {base_sql}")
-    total = db.execute(count_query, {"catalogue_url": catalogue_url}).scalar() or 0
+    total = (
+        db.execute(
+            count_query,
+            {
+                "catalogue_url": catalogue_url,
+                "catalogue_url_pattern": f"{catalogue_url}%",
+            },
+        ).scalar()
+        or 0
+    )
 
     items_query = text(
         f"""
@@ -522,7 +531,12 @@ def list_listing_snapshots_by_catalogue(
     )
     rows = db.execute(
         items_query,
-        {"catalogue_url": catalogue_url, "limit": limit, "offset": offset},
+        {
+            "catalogue_url": catalogue_url,
+            "catalogue_url_pattern": f"{catalogue_url}%",
+            "limit": limit,
+            "offset": offset,
+        },
     ).mappings().all()
     return {"total": total, "items": [dict(row) for row in rows]}
 
