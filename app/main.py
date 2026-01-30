@@ -22,6 +22,8 @@ from app.schemas import (
     EasyliveAuctionAnalytics,
     EasyliveAuctionAnalyticsResponse,
     ScrapeTaskStatusSummary,
+    ScrapeTaskUrlSummaryItem,
+    ScrapeTaskUrlSummaryResponse,
     ListingSnapshotResponse,
     AuctioneerLotsResponse,
     AuctioneerLotsSummary,
@@ -304,6 +306,66 @@ def list_scrape_tasks_related_by_url(
     total = query.count()
     items = query.offset(offset).limit(limit).all()
     return {"total": total, "items": items}
+
+
+@app.get(
+    "/scrape_tasks/summary/by_url", response_model=ScrapeTaskUrlSummaryResponse
+)
+def list_scrape_tasks_summary_by_url(
+    url: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+):
+    url_pattern = f"%{url}%"
+    status_rows = db.execute(
+        text(
+            """
+            SELECT status, COUNT(*) AS total
+            FROM scrape_tasks
+            WHERE url LIKE :url_pattern
+            GROUP BY status
+            """
+        ),
+        {"url_pattern": url_pattern},
+    ).all()
+    status_counts = {row[0]: row[1] for row in status_rows}
+    done_total = status_counts.get("done", 0)
+    todo_total = sum(status_counts.values()) - done_total
+
+    items_query = text(
+        """
+        WITH task_listing_counts AS (
+            SELECT
+                st.id AS task_id,
+                COUNT(DISTINCT l.id) AS listing_count,
+                COUNT(ls.id) AS snapshot_count
+            FROM scrape_tasks st
+            LEFT JOIN task_runs tr ON tr.task_id = st.id
+            LEFT JOIN listing_task_runs ltr ON ltr.task_run_id = tr.id
+            LEFT JOIN listings l ON l.id = ltr.listing_id
+            LEFT JOIN listing_snapshots ls ON ls.listing_id = l.id
+            WHERE st.url LIKE :url_pattern
+            GROUP BY st.id
+        )
+        SELECT
+            st.*,
+            COALESCE(tlc.listing_count, 0) AS listing_count,
+            COALESCE(tlc.snapshot_count, 0) AS snapshot_count
+        FROM scrape_tasks st
+        LEFT JOIN task_listing_counts tlc ON tlc.task_id = st.id
+        WHERE st.url LIKE :url_pattern
+        ORDER BY st.created_at DESC
+        """
+    )
+    rows = db.execute(items_query, {"url_pattern": url_pattern}).mappings().all()
+    items = [ScrapeTaskUrlSummaryItem(**row) for row in rows]
+    done_items = [item for item in items if item.status == "done"]
+    todo_items = [item for item in items if item.status != "done"]
+    return {
+        "done_total": done_total,
+        "todo_total": todo_total,
+        "done_items": done_items,
+        "todo_items": todo_items,
+    }
 
 
 @app.get(

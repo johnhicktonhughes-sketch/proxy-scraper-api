@@ -53,6 +53,18 @@ class ScrapeTaskListResponse(BaseModel):
     items: list[ScrapeTaskOut]
 
 
+class ScrapeTaskUrlSummaryItem(ScrapeTaskOut):
+    listing_count: int
+    snapshot_count: int
+
+
+class ScrapeTaskUrlSummaryResponse(BaseModel):
+    done_total: int
+    todo_total: int
+    done_items: list[ScrapeTaskUrlSummaryItem]
+    todo_items: list[ScrapeTaskUrlSummaryItem]
+
+
 class FailedScrapeTask(BaseModel):
     id: int
     site: Literal["easylive", "the_saleroom"]
