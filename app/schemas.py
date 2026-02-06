@@ -68,6 +68,26 @@ class ScrapeTaskRelatedByUrlResponse(BaseModel):
     items: list[ScrapeTaskRelatedByUrlItem]
 
 
+class ListingSnapshotByUrlPatternItem(BaseModel):
+    listing_id: int | None = None
+    scrape_url: str | None = None
+    lot_url: str | None = None
+    title: str | None = None
+    snapshots: int
+    pre_auction_snapshots: int
+    post_auction_snapshots: int
+    auction_start: str | None = None
+    auction_end: str | None = None
+    est_lo: str | None = None
+    est_hi: str | None = None
+    sold: str | None = None
+
+
+class ListingSnapshotByUrlPatternResponse(BaseModel):
+    total: int
+    items: list[ListingSnapshotByUrlPatternItem]
+
+
 class ScrapeTaskUrlSummaryItem(ScrapeTaskOut):
     listing_count: int
     snapshot_count: int

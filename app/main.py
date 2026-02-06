@@ -26,6 +26,8 @@ from app.schemas import (
     ScrapeTaskStatusSummary,
     ScrapeTaskUrlSummaryItem,
     ScrapeTaskUrlSummaryResponse,
+    ListingSnapshotByUrlPatternItem,
+    ListingSnapshotByUrlPatternResponse,
     ListingSnapshotResponse,
     AuctioneerLotsResponse,
     AuctioneerLotsSummary,
@@ -414,6 +416,74 @@ def list_scrape_tasks_summary_by_url(
         "done_items": done_items,
         "todo_items": todo_items,
     }
+
+
+@app.get(
+    "/scrape_tasks/listing_snapshots/by_url_pattern",
+    response_model=ListingSnapshotByUrlPatternResponse,
+)
+def list_listing_snapshots_by_url_pattern(
+    url_pattern: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    if "%" not in url_pattern:
+        url_pattern = f"%{url_pattern}%"
+    total = db.execute(
+        text(
+            """
+            SELECT COUNT(*) FROM (
+                SELECT 1
+                FROM scrape_tasks st
+                LEFT JOIN task_runs tr ON tr.task_id = st.id
+                LEFT JOIN listing_task_runs ltr ON ltr.task_run_id = tr.id
+                LEFT JOIN listings l ON l.id = ltr.listing_id
+                LEFT JOIN listing_snapshots ls ON ls.listing_id = l.id
+                WHERE st.url LIKE :url_pattern
+                GROUP BY ls.listing_id, l.url, st.url, l.title
+            ) grouped
+            """
+        ),
+        {"url_pattern": url_pattern},
+    ).scalar()
+    items_query = text(
+        """
+        SELECT
+            ls.listing_id,
+            st.url AS scrape_url,
+            l.url AS lot_url,
+            l.title,
+            COUNT(DISTINCT ls.id) AS snapshots,
+            SUM(
+                CASE WHEN ls.snapshot_type = 'pre_auction' THEN 1 ELSE 0 END
+            ) AS pre_auction_snapshots,
+            SUM(
+                CASE WHEN ls.snapshot_type = 'post_auction' THEN 1 ELSE 0 END
+            ) AS post_auction_snapshots,
+            MAX(ls.data->>'auction_start') AS auction_start,
+            MAX(ls.data->>'auction_end') AS auction_end,
+            MAX(ls.data->>'estimate_low') AS est_lo,
+            MAX(ls.data->>'estimate_high') AS est_hi,
+            MAX(ls.data->>'sold_price') AS sold
+        FROM scrape_tasks st
+        LEFT JOIN task_runs tr ON tr.task_id = st.id
+        LEFT JOIN listing_task_runs ltr ON ltr.task_run_id = tr.id
+        LEFT JOIN listings l ON l.id = ltr.listing_id
+        LEFT JOIN listing_snapshots ls ON ls.listing_id = l.id
+        WHERE st.url LIKE :url_pattern
+        GROUP BY ls.listing_id, l.url, st.url, l.title
+        ORDER BY ls.listing_id NULLS LAST
+        OFFSET :offset
+        LIMIT :limit
+        """
+    )
+    rows = db.execute(
+        items_query,
+        {"url_pattern": url_pattern, "offset": offset, "limit": limit},
+    ).mappings().all()
+    items = [ListingSnapshotByUrlPatternItem(**row) for row in rows]
+    return {"total": total or 0, "items": items}
 
 
 @app.get(
