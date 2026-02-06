@@ -330,6 +330,7 @@ def list_scrape_tasks_related_by_url(
             st.meta->>'source' AS source,
             MIN(st.created_at) AS created_at,
             MAX(st.updated_at) AS updated_at,
+            MAX(st.scheduled_at) AS scheduled_at,
             COUNT(DISTINCT l.id) AS listings
         FROM scrape_tasks st
         LEFT JOIN task_runs tr ON tr.task_id = st.id
