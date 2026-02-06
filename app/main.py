@@ -16,6 +16,8 @@ from app.schemas import (
     ScrapeTaskCreate,
     ScrapeTaskListResponse,
     ScrapeTaskOut,
+    ScrapeTaskRelatedByUrlItem,
+    ScrapeTaskRelatedByUrlResponse,
     ScrapeTaskUpdate,
     FailedScrapeTask,
     FailedScrapeTaskListResponse,
@@ -291,21 +293,66 @@ def delete_scrape_task_related_records(
     return {"task_ids": task_ids, "dry_run": False}
 
 
-@app.get("/scrape_tasks/related/by_url", response_model=ScrapeTaskListResponse)
+@app.get(
+    "/scrape_tasks/related/by_url",
+    response_model=ScrapeTaskRelatedByUrlResponse,
+)
 def list_scrape_tasks_related_by_url(
     url: str = Query(..., min_length=1),
     db: Session = Depends(get_db),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ):
-    query = (
-        db.query(ScrapeTask)
-        .filter(ScrapeTask.url.like(f"{url}%"))
-        .order_by(ScrapeTask.created_at.desc())
+    url_pattern = f"{url}%"
+    total = db.execute(
+        text(
+            """
+            SELECT COUNT(*) FROM (
+                SELECT 1
+                FROM scrape_tasks st
+                WHERE st.url LIKE :url_pattern
+                GROUP BY
+                    st.url,
+                    st.task_type,
+                    st.status,
+                    st.meta->>'source'
+            ) grouped
+            """
+        ),
+        {"url_pattern": url_pattern},
+    ).scalar()
+    items_query = text(
+        """
+        SELECT
+            st.url,
+            st.task_type,
+            st.status,
+            st.meta->>'source' AS source,
+            MIN(st.created_at) AS created_at,
+            MAX(st.updated_at) AS updated_at,
+            COUNT(DISTINCT l.id) AS listings
+        FROM scrape_tasks st
+        LEFT JOIN task_runs tr ON tr.task_id = st.id
+        LEFT JOIN listing_task_runs ltr ON ltr.task_run_id = tr.id
+        LEFT JOIN listings l ON l.id = ltr.listing_id
+        LEFT JOIN listing_snapshots ls ON ls.listing_id = l.id
+        WHERE st.url LIKE :url_pattern
+        GROUP BY
+            st.url,
+            st.task_type,
+            st.status,
+            st.meta->>'source'
+        ORDER BY MAX(st.updated_at) DESC
+        OFFSET :offset
+        LIMIT :limit
+        """
     )
-    total = query.count()
-    items = query.offset(offset).limit(limit).all()
-    return {"total": total, "items": items}
+    rows = db.execute(
+        items_query,
+        {"url_pattern": url_pattern, "offset": offset, "limit": limit},
+    ).mappings().all()
+    items = [ScrapeTaskRelatedByUrlItem(**row) for row in rows]
+    return {"total": total or 0, "items": items}
 
 
 @app.get(

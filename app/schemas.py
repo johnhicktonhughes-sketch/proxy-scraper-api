@@ -53,6 +53,21 @@ class ScrapeTaskListResponse(BaseModel):
     items: list[ScrapeTaskOut]
 
 
+class ScrapeTaskRelatedByUrlItem(BaseModel):
+    url: str
+    task_type: Literal["discover", "listing", "rescrape", "catalogue", "auction_times"]
+    status: Literal["pending", "running", "done", "failed"]
+    source: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    listings: int
+
+
+class ScrapeTaskRelatedByUrlResponse(BaseModel):
+    total: int
+    items: list[ScrapeTaskRelatedByUrlItem]
+
+
 class ScrapeTaskUrlSummaryItem(ScrapeTaskOut):
     listing_count: int
     snapshot_count: int
