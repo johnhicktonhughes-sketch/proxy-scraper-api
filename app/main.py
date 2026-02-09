@@ -16,6 +16,8 @@ from app.schemas import (
     ScrapeTaskCreate,
     ScrapeTaskListResponse,
     ScrapeTaskOut,
+    ScrapeTaskRecentItem,
+    ScrapeTaskRecentResponse,
     ScrapeTaskRelatedByUrlItem,
     ScrapeTaskRelatedByUrlResponse,
     ScrapeTaskUpdate,
@@ -555,6 +557,40 @@ def list_pending_future_tasks(
     total = query.count()
     items = query.limit(limit).all()
     return {"total": total, "items": items}
+
+
+@app.get(
+    "/analytics/scrape_tasks/recent", response_model=ScrapeTaskRecentResponse
+)
+def list_recent_scrape_tasks(
+    db: Session = Depends(get_db),
+    limit: int = Query(20, ge=1, le=100),
+):
+    query = text(
+        """
+        WITH listing_counts AS (
+            SELECT
+                st.id AS task_id,
+                COUNT(DISTINCT l.id) AS listing_count
+            FROM scrape_tasks st
+            LEFT JOIN task_runs tr ON tr.task_id = st.id
+            LEFT JOIN listing_task_runs ltr ON ltr.task_run_id = tr.id
+            LEFT JOIN listings l ON l.id = ltr.listing_id
+            GROUP BY st.id
+        )
+        SELECT
+            st.*,
+            COALESCE(lc.listing_count, 0) AS listing_count
+        FROM scrape_tasks st
+        LEFT JOIN listing_counts lc ON lc.task_id = st.id
+        WHERE st.status = 'done'
+        ORDER BY st.updated_at DESC NULLS LAST, st.created_at DESC
+        LIMIT :limit
+        """
+    )
+    rows = db.execute(query, {"limit": limit}).mappings().all()
+    items = [ScrapeTaskRecentItem(**row) for row in rows]
+    return {"total": len(items), "items": items}
 
 
 @app.get("/analytics/scrape_tasks/running", response_model=ScrapeTaskListResponse)
