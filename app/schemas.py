@@ -69,6 +69,7 @@ class ScrapeTaskRelatedByUrlItem(BaseModel):
     source: str | None = None
     created_at: datetime
     updated_at: datetime
+    scheduled_at: datetime | None = None
     listings: int
 
 
