@@ -172,6 +172,24 @@ def create_scrape_task(payload: ScrapeTaskCreate, db: Session = Depends(get_db))
     data = payload.model_dump(exclude_unset=True)
     if data.get("status") is None:
         data["status"] = "pending"
+
+    existing_pending = (
+        db.query(ScrapeTask)
+        .filter(ScrapeTask.site == data["site"])
+        .filter(ScrapeTask.url == data["url"])
+        .filter(ScrapeTask.task_type == data["task_type"])
+        .filter(ScrapeTask.status == "pending")
+        .first()
+    )
+    if existing_pending:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Scrape task is already pending for this site/url/task_type "
+                f"(id={existing_pending.id})"
+            ),
+        )
+
     task = ScrapeTask(**data)
     db.add(task)
     db.commit()
