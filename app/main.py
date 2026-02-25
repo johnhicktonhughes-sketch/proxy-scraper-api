@@ -255,7 +255,7 @@ def delete_scrape_task_related_records(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
     if dry_run:
         logger.info(
-            "Dry run delete /scrape_tasks/related url=%s task_ids=%s", url, task_ids
+            "Dry run and delete /scrape_tasks/related url=%s task_ids=%s", url, task_ids
         )
         return {"task_ids": task_ids, "dry_run": True}
 
