@@ -346,6 +346,7 @@ def list_scrape_tasks_related_by_url(
     items_query = text(
         """
         SELECT
+            MAX(st.id) AS id,
             st.url,
             st.task_type,
             st.status,
