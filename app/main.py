@@ -6,6 +6,7 @@ import os
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from sqlalchemy import bindparam, func, or_, text
 from sqlalchemy.orm import Session
@@ -173,21 +174,34 @@ def create_scrape_task(payload: ScrapeTaskCreate, db: Session = Depends(get_db))
     if data.get("status") is None:
         data["status"] = "pending"
 
-    existing_pending = (
+    existing_pending_query = (
         db.query(ScrapeTask)
         .filter(ScrapeTask.site == data["site"])
         .filter(ScrapeTask.url == data["url"])
         .filter(ScrapeTask.task_type == data["task_type"])
         .filter(ScrapeTask.status == "pending")
-        .first()
     )
+    scheduled_at = data.get("scheduled_at")
+    if scheduled_at is None:
+        existing_pending_query = existing_pending_query.filter(
+            ScrapeTask.scheduled_at.is_(None)
+        )
+    else:
+        existing_pending_query = existing_pending_query.filter(
+            ScrapeTask.scheduled_at == scheduled_at
+        )
+
+    existing_pending = existing_pending_query.first()
     if existing_pending:
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Scrape task is already pending for this site/url/task_type "
-                f"(id={existing_pending.id})"
-            ),
+            content={
+                "detail": (
+                    "Scrape task is already pending for this site/url/task_type "
+                    f"(id={existing_pending.id})"
+                ),
+                "id": existing_pending.id,
+            },
         )
 
     task = ScrapeTask(**data)
