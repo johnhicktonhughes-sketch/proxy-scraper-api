@@ -490,16 +490,30 @@ def list_listing_snapshots_by_url_pattern(
             l.url AS lot_url,
             l.title,
             COUNT(DISTINCT ls.id) AS snapshots,
-            SUM(
+            MAX(
                 CASE WHEN ls.snapshot_type = 'pre_auction' THEN 1 ELSE 0 END
             ) AS pre_auction_snapshots,
-            SUM(
+            MAX(
                 CASE WHEN ls.snapshot_type = 'post_auction' THEN 1 ELSE 0 END
             ) AS post_auction_snapshots,
             MAX(ls.data->>'auction_start') AS auction_start,
             MAX(ls.data->>'auction_end') AS auction_end,
-            MAX(ls.data->>'estimate_low') AS est_lo,
-            MAX(ls.data->>'estimate_high') AS est_hi,
+            COALESCE(
+                MAX(
+                    CASE WHEN ls.snapshot_type = 'pre_auction' THEN ls.data->>'estimate_low' END
+                ),
+                MAX(
+                    CASE WHEN ls.snapshot_type = 'post_auction' THEN ls.data->>'estimate_low' END
+                )
+            ) AS est_lo,
+            COALESCE(
+                MAX(
+                    CASE WHEN ls.snapshot_type = 'pre_auction' THEN ls.data->>'estimate_high' END
+                ),
+                MAX(
+                    CASE WHEN ls.snapshot_type = 'post_auction' THEN ls.data->>'estimate_high' END
+                )
+            ) AS est_hi,
             MAX(ls.data->>'sold_price') AS sold
         FROM scrape_tasks st
         LEFT JOIN task_runs tr ON tr.task_id = st.id
