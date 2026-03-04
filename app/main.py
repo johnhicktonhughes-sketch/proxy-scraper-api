@@ -38,6 +38,7 @@ from app.schemas import (
     AuctioneerPriceSummaryResponse,
     ListingResponse,
     AuctioneerNameListResponse,
+    BackfillAuctionTimesResponse,
 )
 
 
@@ -209,6 +210,57 @@ def create_scrape_task(payload: ScrapeTaskCreate, db: Session = Depends(get_db))
     db.commit()
     db.refresh(task)
     return task
+
+
+@app.post(
+    "/scrape_tasks/backfill/easylive/auction_times",
+    response_model=BackfillAuctionTimesResponse,
+)
+def backfill_easylive_auction_times(db: Session = Depends(get_db)):
+    result = db.execute(
+        text(
+            r"""
+            INSERT INTO scrape_tasks (
+                site,
+                url,
+                task_type,
+                status,
+                scheduled_at,
+                attempts,
+                max_attempts,
+                meta
+            )
+            SELECT
+                'easylive' AS site,
+                s.url,
+                'auction_times' AS task_type,
+                'pending' AS status,
+                NULL AS scheduled_at,
+                0 AS attempts,
+                1 AS max_attempts,
+                jsonb_build_object('source', 'backfill_from_done_catalogue') AS meta
+            FROM (
+                SELECT DISTINCT url
+                FROM scrape_tasks
+                WHERE url !~* '[?&](page|currentpage|p|pagenum|page_no)='
+                  AND url !~* '/lot(?:/|-|\?)'
+                  AND url !~* '/auctions'
+                  AND status = 'done'
+                  AND site = 'easylive'
+                  AND task_type = 'catalogue'
+            ) s
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM scrape_tasks t
+                WHERE t.site = 'easylive'
+                  AND t.task_type = 'auction_times'
+                  AND t.url = s.url
+            )
+            """
+        )
+    )
+    db.commit()
+    return {"inserted": result.rowcount or 0}
 
 
 @app.patch("/scrape_tasks/{task_id}", response_model=ScrapeTaskOut)

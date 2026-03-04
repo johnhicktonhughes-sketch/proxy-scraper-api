@@ -201,3 +201,7 @@ class ListingResponse(BaseModel):
 class AuctioneerNameListResponse(BaseModel):
     total: int
     items: list[str]
+
+
+class BackfillAuctionTimesResponse(BaseModel):
+    inserted: int
