@@ -63,19 +63,21 @@ class ScrapeTaskRecentResponse(BaseModel):
 
 
 class ScrapeTaskRelatedByUrlItem(BaseModel):
-    id: int
-    url: str
     task_type: Literal["discover", "listing", "rescrape", "catalogue", "auction_times"]
     status: Literal["pending", "running", "done", "failed"]
     source: str | None = None
-    created_at: datetime
-    updated_at: datetime
-    scheduled_at: datetime | None = None
-    listings: int
+    jobs: int
+    total_listings: int
+    last_job_at: datetime
+    future_jobs: int
+    has_future_activity: bool
+    next_scheduled_at: datetime | None = None
 
 
 class ScrapeTaskRelatedByUrlResponse(BaseModel):
     total: int
+    total_jobs: int
+    total_listings: int
     items: list[ScrapeTaskRelatedByUrlItem]
 
 

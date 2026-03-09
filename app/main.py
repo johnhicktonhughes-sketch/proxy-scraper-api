@@ -392,6 +392,7 @@ def list_scrape_tasks_related_by_url(
     offset: int = Query(0, ge=0),
 ):
     url_pattern = f"{url}%"
+    now = datetime.now(timezone.utc)
     total = db.execute(
         text(
             """
@@ -400,7 +401,6 @@ def list_scrape_tasks_related_by_url(
                 FROM scrape_tasks st
                 WHERE st.url LIKE :url_pattern
                 GROUP BY
-                    st.url,
                     st.task_type,
                     st.status,
                     st.meta->>'source'
@@ -409,40 +409,78 @@ def list_scrape_tasks_related_by_url(
         ),
         {"url_pattern": url_pattern},
     ).scalar()
+    summary_row = db.execute(
+        text(
+            """
+            WITH task_listing_counts AS (
+                SELECT
+                    st.id AS task_id,
+                    COUNT(DISTINCT l.id) AS listing_count
+                FROM scrape_tasks st
+                LEFT JOIN task_runs tr ON tr.task_id = st.id
+                LEFT JOIN listing_task_runs ltr ON ltr.task_run_id = tr.id
+                LEFT JOIN listings l ON l.id = ltr.listing_id
+                WHERE st.url LIKE :url_pattern
+                GROUP BY st.id
+            )
+            SELECT
+                COUNT(*) AS total_jobs,
+                COALESCE(SUM(tlc.listing_count), 0) AS total_listings
+            FROM scrape_tasks st
+            LEFT JOIN task_listing_counts tlc ON tlc.task_id = st.id
+            WHERE st.url LIKE :url_pattern
+            """
+        ),
+        {"url_pattern": url_pattern},
+    ).mappings().one()
     items_query = text(
         """
+        WITH task_listing_counts AS (
+            SELECT
+                st.id AS task_id,
+                COUNT(DISTINCT l.id) AS listing_count
+            FROM scrape_tasks st
+            LEFT JOIN task_runs tr ON tr.task_id = st.id
+            LEFT JOIN listing_task_runs ltr ON ltr.task_run_id = tr.id
+            LEFT JOIN listings l ON l.id = ltr.listing_id
+            WHERE st.url LIKE :url_pattern
+            GROUP BY st.id
+        )
         SELECT
-            MAX(st.id) AS id,
-            st.url,
             st.task_type,
             st.status,
             st.meta->>'source' AS source,
-            MIN(st.created_at) AS created_at,
-            MAX(st.updated_at) AS updated_at,
-            MAX(st.scheduled_at) AS scheduled_at,
-            COUNT(DISTINCT l.id) AS listings
+            COUNT(*) AS jobs,
+            COALESCE(SUM(tlc.listing_count), 0) AS total_listings,
+            MAX(st.created_at) AS last_job_at,
+            COUNT(*) FILTER (WHERE st.scheduled_at > :now) AS future_jobs,
+            MIN(st.scheduled_at) FILTER (WHERE st.scheduled_at > :now) AS next_scheduled_at
         FROM scrape_tasks st
-        LEFT JOIN task_runs tr ON tr.task_id = st.id
-        LEFT JOIN listing_task_runs ltr ON ltr.task_run_id = tr.id
-        LEFT JOIN listings l ON l.id = ltr.listing_id
-        LEFT JOIN listing_snapshots ls ON ls.listing_id = l.id
+        LEFT JOIN task_listing_counts tlc ON tlc.task_id = st.id
         WHERE st.url LIKE :url_pattern
-        GROUP BY
-            st.url,
-            st.task_type,
-            st.status,
-            st.meta->>'source'
-        ORDER BY MAX(st.updated_at) DESC
+        GROUP BY st.task_type, st.status, st.meta->>'source'
+        ORDER BY MAX(st.created_at) DESC, st.task_type, st.status, st.meta->>'source'
         OFFSET :offset
         LIMIT :limit
         """
     )
     rows = db.execute(
         items_query,
-        {"url_pattern": url_pattern, "offset": offset, "limit": limit},
+        {"url_pattern": url_pattern, "now": now, "offset": offset, "limit": limit},
     ).mappings().all()
-    items = [ScrapeTaskRelatedByUrlItem(**row) for row in rows]
-    return {"total": total or 0, "items": items}
+    items = [
+        ScrapeTaskRelatedByUrlItem(
+            **row,
+            has_future_activity=(row["future_jobs"] or 0) > 0,
+        )
+        for row in rows
+    ]
+    return {
+        "total": total or 0,
+        "total_jobs": summary_row["total_jobs"] or 0,
+        "total_listings": summary_row["total_listings"] or 0,
+        "items": items,
+    }
 
 
 @app.get(
