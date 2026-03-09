@@ -447,6 +447,7 @@ def list_scrape_tasks_related_by_url(
             GROUP BY st.id
         )
         SELECT
+            MAX(st.id) AS id,
             st.task_type,
             st.status,
             st.meta->>'source' AS source,

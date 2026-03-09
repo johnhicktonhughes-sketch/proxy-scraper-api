@@ -63,6 +63,7 @@ class ScrapeTaskRecentResponse(BaseModel):
 
 
 class ScrapeTaskRelatedByUrlItem(BaseModel):
+    id: int
     task_type: Literal["discover", "listing", "rescrape", "catalogue", "auction_times"]
     status: Literal["pending", "running", "done", "failed"]
     source: str | None = None
