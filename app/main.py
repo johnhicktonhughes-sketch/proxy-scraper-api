@@ -1003,7 +1003,7 @@ def list_listing_snapshots_by_auction_date(
                 mc.auctioneer_name,
                 mc.auction_name,
                 COALESCE(
-                    MAX(st.site),
+                    MAX(st.site::text),
                     CASE
                         WHEN mc.url LIKE '%the-saleroom%' THEN 'the_saleroom'
                         WHEN mc.url LIKE '%easyliveauction%' THEN 'easylive'
