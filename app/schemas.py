@@ -229,3 +229,8 @@ class AuctionDateSnapshotSummaryResponse(BaseModel):
     pre_auction_snapshots: int
     post_auction_snapshots: int
     items: list[AuctionDateSnapshotSummaryItem]
+
+
+class AuctionTimesQueryResponse(BaseModel):
+    total: int
+    items: list[Dict[str, Any]]

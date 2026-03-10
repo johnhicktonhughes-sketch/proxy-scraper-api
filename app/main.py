@@ -41,6 +41,7 @@ from app.schemas import (
     BackfillAuctionTimesResponse,
     AuctionDateSnapshotSummaryItem,
     AuctionDateSnapshotSummaryResponse,
+    AuctionTimesQueryResponse,
 )
 
 
@@ -971,7 +972,7 @@ def list_listing_snapshots_by_catalogue(
 
 @app.get(
     "/listing_snapshots/by_auction_date",
-    response_model=AuctionDateSnapshotSummaryResponse,
+    response_model=AuctionTimesQueryResponse,
 )
 def list_listing_snapshots_by_auction_date(
     auction_date: date | None = Query(None),
@@ -985,86 +986,25 @@ def list_listing_snapshots_by_auction_date(
         )
     items_query = text(
         """
-        WITH matched_catalogues AS (
-            SELECT DISTINCT at.url, at.auctioneer_name, at.auction_name
-            FROM auction_times at
-            WHERE (
-                  :auction_date IS NULL
-                  OR DATE(COALESCE(at.auction_end, at.auction_start)) = :auction_date
-              )
-              AND (
-                  :auctioneer_name IS NULL
-                  OR at.auctioneer_name = :auctioneer_name
-              )
-        ),
-        catalogue_sites AS (
-            SELECT
-                mc.url,
-                mc.auctioneer_name,
-                mc.auction_name,
-                COALESCE(
-                    MAX(st.site::text),
-                    CASE
-                        WHEN mc.url LIKE '%the-saleroom%' THEN 'the_saleroom'
-                        WHEN mc.url LIKE '%easyliveauction%' THEN 'easylive'
-                        ELSE NULL
-                    END
-                ) AS site
-            FROM matched_catalogues mc
-            LEFT JOIN scrape_tasks st ON st.url = mc.url
-            GROUP BY mc.url, mc.auctioneer_name, mc.auction_name
-        ),
-        related_task_runs AS (
-            SELECT DISTINCT cs.url AS catalogue_url, tr.id AS task_run_id
-            FROM catalogue_sites cs
-            JOIN task_runs tr ON tr.url LIKE cs.url || '%'
-            UNION
-            SELECT DISTINCT cs.url AS catalogue_url, tr.id AS task_run_id
-            FROM catalogue_sites cs
-            JOIN scrape_tasks st ON st.url = cs.url
-            JOIN task_runs tr ON tr.task_id = st.id
-        ),
-        related_listings AS (
-            SELECT DISTINCT
-                rtr.catalogue_url,
-                ltr.listing_id
-            FROM related_task_runs rtr
-            JOIN listing_task_runs ltr ON ltr.task_run_id = rtr.task_run_id
-        )
-        SELECT
-            cs.url AS catalogue_url,
-            cs.site,
-            cs.auctioneer_name,
-            cs.auction_name,
-            COUNT(DISTINCT rl.listing_id) AS total_listings,
-            COUNT(DISTINCT ls.id) AS total_snapshots,
-            COUNT(DISTINCT ls.id) FILTER (
-                WHERE ls.snapshot_type = 'pre_auction'
-            ) AS pre_auction_snapshots,
-            COUNT(DISTINCT ls.id) FILTER (
-                WHERE ls.snapshot_type = 'post_auction'
-            ) AS post_auction_snapshots
-        FROM catalogue_sites cs
-        LEFT JOIN related_listings rl ON rl.catalogue_url = cs.url
-        LEFT JOIN listing_snapshots ls ON ls.listing_id = rl.listing_id
-        GROUP BY cs.url, cs.site, cs.auctioneer_name, cs.auction_name
-        ORDER BY cs.site, cs.auctioneer_name, cs.auction_name, cs.url
+        SELECT at.*
+        FROM auction_times at
+        WHERE (
+              :auction_date IS NULL
+              OR DATE(COALESCE(at.auction_end, at.auction_start)) = :auction_date
+          )
+          AND (
+              :auctioneer_name IS NULL
+              OR at.auctioneer_name = :auctioneer_name
+          )
+        ORDER BY at.auctioneer_name, at.auction_name, at.url
         """
     )
     rows = db.execute(
         items_query,
         {"auction_date": auction_date, "auctioneer_name": auctioneer_name},
     ).mappings().all()
-    items = [AuctionDateSnapshotSummaryItem(**row) for row in rows]
-    return {
-        "auction_date": auction_date,
-        "total_catalogues": len(items),
-        "total_listings": sum(item.total_listings for item in items),
-        "total_snapshots": sum(item.total_snapshots for item in items),
-        "pre_auction_snapshots": sum(item.pre_auction_snapshots for item in items),
-        "post_auction_snapshots": sum(item.post_auction_snapshots for item in items),
-        "items": items,
-    }
+    items = [dict(row) for row in rows]
+    return {"total": len(items), "items": items}
 
 
 @app.get(
