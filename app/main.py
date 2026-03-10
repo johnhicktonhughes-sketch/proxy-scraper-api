@@ -986,7 +986,7 @@ def list_listing_snapshots_by_auction_date(
     items_query = text(
         """
         WITH matched_catalogues AS (
-            SELECT DISTINCT at.url, at.site, at.auctioneer_name, at.auction_name
+            SELECT DISTINCT at.url, at.auctioneer_name, at.auction_name
             FROM auction_times at
             WHERE (
                   :auction_date IS NULL
@@ -997,21 +997,38 @@ def list_listing_snapshots_by_auction_date(
                   OR at.auctioneer_name = :auctioneer_name
               )
         ),
+        catalogue_sites AS (
+            SELECT
+                mc.url,
+                mc.auctioneer_name,
+                mc.auction_name,
+                COALESCE(
+                    MAX(st.site),
+                    CASE
+                        WHEN mc.url LIKE '%the-saleroom%' THEN 'the_saleroom'
+                        WHEN mc.url LIKE '%easyliveauction%' THEN 'easylive'
+                        ELSE NULL
+                    END
+                ) AS site
+            FROM matched_catalogues mc
+            LEFT JOIN scrape_tasks st ON st.url = mc.url
+            GROUP BY mc.url, mc.auctioneer_name, mc.auction_name
+        ),
         related_task_runs AS (
-            SELECT DISTINCT mc.url AS catalogue_url, tr.id AS task_run_id
-            FROM matched_catalogues mc
-            JOIN task_runs tr ON tr.url LIKE mc.url || '%'
+            SELECT DISTINCT cs.url AS catalogue_url, tr.id AS task_run_id
+            FROM catalogue_sites cs
+            JOIN task_runs tr ON tr.url LIKE cs.url || '%'
             UNION
-            SELECT DISTINCT mc.url AS catalogue_url, tr.id AS task_run_id
-            FROM matched_catalogues mc
-            JOIN scrape_tasks st ON st.url = mc.url
+            SELECT DISTINCT cs.url AS catalogue_url, tr.id AS task_run_id
+            FROM catalogue_sites cs
+            JOIN scrape_tasks st ON st.url = cs.url
             JOIN task_runs tr ON tr.task_id = st.id
         )
         SELECT
-            mc.url AS catalogue_url,
-            mc.site,
-            mc.auctioneer_name,
-            mc.auction_name,
+            cs.url AS catalogue_url,
+            cs.site,
+            cs.auctioneer_name,
+            cs.auction_name,
             COUNT(DISTINCT l.id) AS total_listings,
             COUNT(ls.id) AS total_snapshots,
             COUNT(*) FILTER (
@@ -1020,13 +1037,13 @@ def list_listing_snapshots_by_auction_date(
             COUNT(*) FILTER (
                 WHERE ls.snapshot_type = 'post_auction'
             ) AS post_auction_snapshots
-        FROM matched_catalogues mc
-        LEFT JOIN related_task_runs rtr ON rtr.catalogue_url = mc.url
+        FROM catalogue_sites cs
+        LEFT JOIN related_task_runs rtr ON rtr.catalogue_url = cs.url
         LEFT JOIN listing_task_runs ltr ON ltr.task_run_id = rtr.task_run_id
         LEFT JOIN listings l ON l.id = ltr.listing_id
         LEFT JOIN listing_snapshots ls ON ls.listing_id = l.id
-        GROUP BY mc.url, mc.site, mc.auctioneer_name, mc.auction_name
-        ORDER BY mc.site, mc.auctioneer_name, mc.auction_name, mc.url
+        GROUP BY cs.url, cs.site, cs.auctioneer_name, cs.auction_name
+        ORDER BY cs.site, cs.auctioneer_name, cs.auction_name, cs.url
         """
     )
     rows = db.execute(
