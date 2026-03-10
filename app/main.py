@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import logging
 from typing import List, Literal
 
@@ -39,6 +39,8 @@ from app.schemas import (
     ListingResponse,
     AuctioneerNameListResponse,
     BackfillAuctionTimesResponse,
+    AuctionDateSnapshotSummaryItem,
+    AuctionDateSnapshotSummaryResponse,
 )
 
 
@@ -253,6 +255,57 @@ def backfill_easylive_auction_times(db: Session = Depends(get_db)):
                 SELECT 1
                 FROM scrape_tasks t
                 WHERE t.site = 'easylive'
+                  AND t.task_type = 'auction_times'
+                  AND t.url = s.url
+            )
+            """
+        )
+    )
+    db.commit()
+    return {"inserted": result.rowcount or 0}
+
+
+@app.post(
+    "/scrape_tasks/backfill/the_saleroom/auction_times",
+    response_model=BackfillAuctionTimesResponse,
+)
+def backfill_the_saleroom_auction_times(db: Session = Depends(get_db)):
+    result = db.execute(
+        text(
+            r"""
+            INSERT INTO scrape_tasks (
+                site,
+                url,
+                task_type,
+                status,
+                scheduled_at,
+                attempts,
+                max_attempts,
+                meta
+            )
+            SELECT
+                'the_saleroom' AS site,
+                s.url,
+                'auction_times' AS task_type,
+                'pending' AS status,
+                NULL AS scheduled_at,
+                0 AS attempts,
+                1 AS max_attempts,
+                jsonb_build_object('source', 'backfill_from_done_catalogue') AS meta
+            FROM (
+                SELECT DISTINCT url
+                FROM scrape_tasks
+                WHERE url !~* '[?&](page|currentpage|p|pagenum|page_no)='
+                  AND url !~* '/lot(?:/|-|\?)'
+                  AND url !~* '/auctions'
+                  AND status = 'done'
+                  AND site = 'the_saleroom'
+                  AND task_type = 'catalogue'
+            ) s
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM scrape_tasks t
+                WHERE t.site = 'the_saleroom'
                   AND t.task_type = 'auction_times'
                   AND t.url = s.url
             )
@@ -913,6 +966,82 @@ def list_listing_snapshots_by_catalogue(
         "total_listings": total_listings,
         "next_offset": next_offset,
         "items": [dict(row) for row in rows],
+    }
+
+
+@app.get(
+    "/listing_snapshots/by_auction_date",
+    response_model=AuctionDateSnapshotSummaryResponse,
+)
+def list_listing_snapshots_by_auction_date(
+    auction_date: date | None = Query(None),
+    auctioneer_name: str | None = Query(None, min_length=1),
+    db: Session = Depends(get_db),
+):
+    if auction_date is None and auctioneer_name is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one of auction_date or auctioneer_name is required",
+        )
+    items_query = text(
+        """
+        WITH matched_catalogues AS (
+            SELECT DISTINCT at.url, at.site, at.auctioneer_name, at.auction_name
+            FROM auction_times at
+            WHERE (
+                  :auction_date IS NULL
+                  OR DATE(COALESCE(at.auction_end, at.auction_start)) = :auction_date
+              )
+              AND (
+                  :auctioneer_name IS NULL
+                  OR at.auctioneer_name = :auctioneer_name
+              )
+        ),
+        related_task_runs AS (
+            SELECT DISTINCT mc.url AS catalogue_url, tr.id AS task_run_id
+            FROM matched_catalogues mc
+            JOIN task_runs tr ON tr.url LIKE mc.url || '%'
+            UNION
+            SELECT DISTINCT mc.url AS catalogue_url, tr.id AS task_run_id
+            FROM matched_catalogues mc
+            JOIN scrape_tasks st ON st.url = mc.url
+            JOIN task_runs tr ON tr.task_id = st.id
+        )
+        SELECT
+            mc.url AS catalogue_url,
+            mc.site,
+            mc.auctioneer_name,
+            mc.auction_name,
+            COUNT(DISTINCT l.id) AS total_listings,
+            COUNT(ls.id) AS total_snapshots,
+            COUNT(*) FILTER (
+                WHERE ls.snapshot_type = 'pre_auction'
+            ) AS pre_auction_snapshots,
+            COUNT(*) FILTER (
+                WHERE ls.snapshot_type = 'post_auction'
+            ) AS post_auction_snapshots
+        FROM matched_catalogues mc
+        LEFT JOIN related_task_runs rtr ON rtr.catalogue_url = mc.url
+        LEFT JOIN listing_task_runs ltr ON ltr.task_run_id = rtr.task_run_id
+        LEFT JOIN listings l ON l.id = ltr.listing_id
+        LEFT JOIN listing_snapshots ls ON ls.listing_id = l.id
+        GROUP BY mc.url, mc.site, mc.auctioneer_name, mc.auction_name
+        ORDER BY mc.site, mc.auctioneer_name, mc.auction_name, mc.url
+        """
+    )
+    rows = db.execute(
+        items_query,
+        {"auction_date": auction_date, "auctioneer_name": auctioneer_name},
+    ).mappings().all()
+    items = [AuctionDateSnapshotSummaryItem(**row) for row in rows]
+    return {
+        "auction_date": auction_date,
+        "total_catalogues": len(items),
+        "total_listings": sum(item.total_listings for item in items),
+        "total_snapshots": sum(item.total_snapshots for item in items),
+        "pre_auction_snapshots": sum(item.pre_auction_snapshots for item in items),
+        "post_auction_snapshots": sum(item.post_auction_snapshots for item in items),
+        "items": items,
     }
 
 
