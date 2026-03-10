@@ -1023,25 +1023,30 @@ def list_listing_snapshots_by_auction_date(
             FROM catalogue_sites cs
             JOIN scrape_tasks st ON st.url = cs.url
             JOIN task_runs tr ON tr.task_id = st.id
+        ),
+        related_listings AS (
+            SELECT DISTINCT
+                rtr.catalogue_url,
+                ltr.listing_id
+            FROM related_task_runs rtr
+            JOIN listing_task_runs ltr ON ltr.task_run_id = rtr.task_run_id
         )
         SELECT
             cs.url AS catalogue_url,
             cs.site,
             cs.auctioneer_name,
             cs.auction_name,
-            COUNT(DISTINCT l.id) AS total_listings,
-            COUNT(ls.id) AS total_snapshots,
-            COUNT(*) FILTER (
+            COUNT(DISTINCT rl.listing_id) AS total_listings,
+            COUNT(DISTINCT ls.id) AS total_snapshots,
+            COUNT(DISTINCT ls.id) FILTER (
                 WHERE ls.snapshot_type = 'pre_auction'
             ) AS pre_auction_snapshots,
-            COUNT(*) FILTER (
+            COUNT(DISTINCT ls.id) FILTER (
                 WHERE ls.snapshot_type = 'post_auction'
             ) AS post_auction_snapshots
         FROM catalogue_sites cs
-        LEFT JOIN related_task_runs rtr ON rtr.catalogue_url = cs.url
-        LEFT JOIN listing_task_runs ltr ON ltr.task_run_id = rtr.task_run_id
-        LEFT JOIN listings l ON l.id = ltr.listing_id
-        LEFT JOIN listing_snapshots ls ON ls.listing_id = l.id
+        LEFT JOIN related_listings rl ON rl.catalogue_url = cs.url
+        LEFT JOIN listing_snapshots ls ON ls.listing_id = rl.listing_id
         GROUP BY cs.url, cs.site, cs.auctioneer_name, cs.auction_name
         ORDER BY cs.site, cs.auctioneer_name, cs.auction_name, cs.url
         """
