@@ -222,7 +222,7 @@ class AuctionDateSnapshotSummaryItem(BaseModel):
 
 
 class AuctionDateSnapshotSummaryResponse(BaseModel):
-    auction_date: date
+    auction_date: date | None = None
     total_catalogues: int
     total_listings: int
     total_snapshots: int
