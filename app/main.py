@@ -610,6 +610,57 @@ def list_listing_snapshots_by_url_pattern(
 ):
     if "%" not in url_pattern:
         url_pattern = f"%{url_pattern}%"
+    sold_summary = db.execute(
+        text(
+            """
+            WITH listing_rollup AS (
+                SELECT
+                    l.id AS listing_id,
+                    COALESCE(
+                        MAX(
+                            CASE
+                                WHEN ls.snapshot_type = 'pre_auction'
+                                THEN NULLIF(ls.data->>'estimate_high', '')::numeric
+                            END
+                        ),
+                        MAX(
+                            CASE
+                                WHEN ls.snapshot_type = 'post_auction'
+                                THEN NULLIF(ls.data->>'estimate_high', '')::numeric
+                            END
+                        )
+                    ) AS estimate_high,
+                    MAX(NULLIF(ls.data->>'sold_price', '')::numeric) AS sold_price
+                FROM scrape_tasks st
+                JOIN task_runs tr ON tr.task_id = st.id
+                JOIN listing_task_runs ltr ON ltr.task_run_id = tr.id
+                JOIN listings l ON l.id = ltr.listing_id
+                LEFT JOIN listing_snapshots ls ON ls.listing_id = l.id
+                WHERE st.url LIKE :url_pattern
+                GROUP BY l.id
+            )
+            SELECT
+                COUNT(*) FILTER (WHERE sold_price IS NOT NULL) AS sold_price_count,
+                ROUND(AVG(sold_price), 2) AS average_sold_price,
+                CASE
+                    WHEN COALESCE(
+                        SUM(estimate_high) FILTER (
+                            WHERE sold_price IS NOT NULL AND estimate_high IS NOT NULL
+                        ),
+                        0
+                    ) > 0
+                    THEN
+                        SUM(sold_price) FILTER (WHERE sold_price IS NOT NULL)
+                        / SUM(estimate_high) FILTER (
+                            WHERE sold_price IS NOT NULL AND estimate_high IS NOT NULL
+                        )
+                    ELSE NULL
+                END AS sold_to_estimate_high_ratio
+            FROM listing_rollup
+            """
+        ),
+        {"url_pattern": url_pattern},
+    ).mappings().one()
     total = db.execute(
         text(
             """
@@ -677,7 +728,13 @@ def list_listing_snapshots_by_url_pattern(
         {"url_pattern": url_pattern, "offset": offset, "limit": limit},
     ).mappings().all()
     items = [ListingSnapshotByUrlPatternItem(**row) for row in rows]
-    return {"total": total or 0, "items": items}
+    return {
+        "total": total or 0,
+        "sold_price_count": sold_summary["sold_price_count"] or 0,
+        "average_sold_price": sold_summary["average_sold_price"],
+        "sold_to_estimate_high_ratio": sold_summary["sold_to_estimate_high_ratio"],
+        "items": items,
+    }
 
 
 @app.get(
