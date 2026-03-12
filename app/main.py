@@ -620,6 +620,20 @@ def list_listing_snapshots_by_url_pattern(
                         MAX(
                             CASE
                                 WHEN ls.snapshot_type = 'pre_auction'
+                                THEN NULLIF(ls.data->>'estimate_low', '')::numeric
+                            END
+                        ),
+                        MAX(
+                            CASE
+                                WHEN ls.snapshot_type = 'post_auction'
+                                THEN NULLIF(ls.data->>'estimate_low', '')::numeric
+                            END
+                        )
+                    ) AS estimate_low,
+                    COALESCE(
+                        MAX(
+                            CASE
+                                WHEN ls.snapshot_type = 'pre_auction'
                                 THEN NULLIF(ls.data->>'estimate_high', '')::numeric
                             END
                         ),
@@ -644,6 +658,20 @@ def list_listing_snapshots_by_url_pattern(
                 ROUND(AVG(sold_price), 2) AS average_sold_price,
                 CASE
                     WHEN COALESCE(
+                        SUM(estimate_low) FILTER (
+                            WHERE sold_price IS NOT NULL AND estimate_low IS NOT NULL
+                        ),
+                        0
+                    ) > 0
+                    THEN
+                        SUM(sold_price) FILTER (WHERE sold_price IS NOT NULL)
+                        / SUM(estimate_low) FILTER (
+                            WHERE sold_price IS NOT NULL AND estimate_low IS NOT NULL
+                        )
+                    ELSE NULL
+                END AS sold_to_estimate_low_ratio,
+                CASE
+                    WHEN COALESCE(
                         SUM(estimate_high) FILTER (
                             WHERE sold_price IS NOT NULL AND estimate_high IS NOT NULL
                         ),
@@ -656,6 +684,29 @@ def list_listing_snapshots_by_url_pattern(
                         )
                     ELSE NULL
                 END AS sold_to_estimate_high_ratio
+                ,
+                CASE
+                    WHEN COALESCE(
+                        SUM(estimate_low) FILTER (
+                            WHERE sold_price IS NOT NULL
+                                AND estimate_low IS NOT NULL
+                                AND estimate_high IS NOT NULL
+                        ),
+                        0
+                    ) > 0
+                    THEN
+                        SUM(estimate_high) FILTER (
+                            WHERE sold_price IS NOT NULL
+                                AND estimate_low IS NOT NULL
+                                AND estimate_high IS NOT NULL
+                        )
+                        / SUM(estimate_low) FILTER (
+                            WHERE sold_price IS NOT NULL
+                                AND estimate_low IS NOT NULL
+                                AND estimate_high IS NOT NULL
+                        )
+                    ELSE NULL
+                END AS estimate_high_to_low_ratio_for_sold
             FROM listing_rollup
             """
         ),
@@ -732,7 +783,11 @@ def list_listing_snapshots_by_url_pattern(
         "total": total or 0,
         "sold_price_count": sold_summary["sold_price_count"] or 0,
         "average_sold_price": sold_summary["average_sold_price"],
+        "sold_to_estimate_low_ratio": sold_summary["sold_to_estimate_low_ratio"],
         "sold_to_estimate_high_ratio": sold_summary["sold_to_estimate_high_ratio"],
+        "estimate_high_to_low_ratio_for_sold": sold_summary[
+            "estimate_high_to_low_ratio_for_sold"
+        ],
         "items": items,
     }
 

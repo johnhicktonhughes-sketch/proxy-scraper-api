@@ -101,7 +101,9 @@ class ListingSnapshotByUrlPatternResponse(BaseModel):
     total: int
     sold_price_count: int
     average_sold_price: float | None = None
+    sold_to_estimate_low_ratio: float | None = None
     sold_to_estimate_high_ratio: float | None = None
+    estimate_high_to_low_ratio_for_sold: float | None = None
     items: list[ListingSnapshotByUrlPatternItem]
 
 
