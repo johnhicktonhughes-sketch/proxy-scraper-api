@@ -1089,12 +1089,20 @@ def list_listing_snapshots_by_catalogue(
 def list_listing_snapshots_by_auction_date(
     auction_date: date | None = Query(None),
     auctioneer_name: str | None = Query(None, min_length=1),
+    auctioneer_name_contains: str | None = Query(None, min_length=1),
     db: Session = Depends(get_db),
 ):
-    if auction_date is None and auctioneer_name is None:
+    if (
+        auction_date is None
+        and auctioneer_name is None
+        and auctioneer_name_contains is None
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="At least one of auction_date or auctioneer_name is required",
+            detail=(
+                "At least one of auction_date, auctioneer_name, or "
+                "auctioneer_name_contains is required"
+            ),
         )
     items_query = text(
         """
@@ -1108,12 +1116,20 @@ def list_listing_snapshots_by_auction_date(
               :auctioneer_name IS NULL
               OR at.auctioneer_name = :auctioneer_name
           )
+          AND (
+              :auctioneer_name_contains IS NULL
+              OR at.auctioneer_name ILIKE '%' || :auctioneer_name_contains || '%'
+          )
         ORDER BY at.auctioneer_name, at.auction_name, at.url
         """
     )
     rows = db.execute(
         items_query,
-        {"auction_date": auction_date, "auctioneer_name": auctioneer_name},
+        {
+            "auction_date": auction_date,
+            "auctioneer_name": auctioneer_name,
+            "auctioneer_name_contains": auctioneer_name_contains,
+        },
     ).mappings().all()
     items = [dict(row) for row in rows]
     return {"total": len(items), "items": items}

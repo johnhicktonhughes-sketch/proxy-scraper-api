@@ -1,0 +1,23 @@
+                                                                    Table "public.listings"
+     Column      |           Type           | Collation | Nullable |               Default                | Storage  | Compression | Stats target | Description 
+-----------------+--------------------------+-----------+----------+--------------------------------------+----------+-------------+--------------+-------------
+ id              | bigint                   |           | not null | nextval('listings_id_seq'::regclass) | plain    |             |              | 
+ site            | text                     |           | not null |                                      | extended |             |              | 
+ site_listing_id | text                     |           | not null |                                      | extended |             |              | 
+ url             | text                     |           | not null |                                      | extended |             |              | 
+ title           | text                     |           |          |                                      | extended |             |              | 
+ auction_end     | timestamp with time zone |           |          |                                      | plain    |             |              | 
+ created_at      | timestamp with time zone |           | not null | now()                                | plain    |             |              | 
+ updated_at      | timestamp with time zone |           | not null | now()                                | plain    |             |              | 
+ checked         | integer                  |           | not null | 0                                    | plain    |             |              | 
+ meta            | jsonb                    |           | not null | '{}'::jsonb                          | extended |             |              | 
+Indexes:
+    "listings_pkey" PRIMARY KEY, btree (id)
+    "listings_checked_idx" btree (checked)
+    "listings_site_site_listing_id_uniq" UNIQUE CONSTRAINT, btree (site, site_listing_id)
+Referenced by:
+    TABLE "listing_images" CONSTRAINT "listing_images_listing_id_fkey" FOREIGN KEY (listing_id) REFERENCES listings(id)
+    TABLE "listing_snapshots" CONSTRAINT "listing_snapshots_listing_id_fkey" FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE
+    TABLE "listing_task_runs" CONSTRAINT "listing_task_runs_listing_id_fkey" FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE
+Access method: heap
+
