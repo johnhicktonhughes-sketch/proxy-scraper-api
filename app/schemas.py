@@ -3,7 +3,7 @@ from typing import Any, Dict, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-type ScrapeTaskType = Literal[
+ScrapeTaskType = Literal[
     "discover",
     "listing",
     "rescrape",
