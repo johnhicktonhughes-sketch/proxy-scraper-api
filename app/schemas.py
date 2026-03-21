@@ -3,11 +3,20 @@ from typing import Any, Dict, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+type ScrapeTaskType = Literal[
+    "discover",
+    "listing",
+    "rescrape",
+    "catalogue",
+    "auction_times",
+    "auction_listings",
+]
+
 
 class ScrapeTaskBase(BaseModel):
     site: Literal["easylive", "the_saleroom"]
     url: str
-    task_type: Literal["discover", "listing", "rescrape", "catalogue", "auction_times"]
+    task_type: ScrapeTaskType
     status: Optional[Literal["pending", "running", "done", "failed"]] = None
     scheduled_at: Optional[datetime] = None
     locked_at: Optional[datetime] = None
@@ -24,9 +33,7 @@ class ScrapeTaskCreate(ScrapeTaskBase):
 class ScrapeTaskUpdate(BaseModel):
     site: Optional[Literal["easylive", "the_saleroom"]] = None
     url: Optional[str] = None
-    task_type: Optional[
-        Literal["discover", "listing", "rescrape", "catalogue", "auction_times"]
-    ] = None
+    task_type: Optional[ScrapeTaskType] = None
     status: Optional[Literal["pending", "running", "done", "failed"]] = None
     scheduled_at: Optional[datetime] = None
     locked_at: Optional[datetime] = None
@@ -64,7 +71,7 @@ class ScrapeTaskRecentResponse(BaseModel):
 
 class ScrapeTaskRelatedByUrlItem(BaseModel):
     id: int
-    task_type: Literal["discover", "listing", "rescrape", "catalogue", "auction_times"]
+    task_type: ScrapeTaskType
     status: Literal["pending", "running", "done", "failed"]
     source: str | None = None
     jobs: int
@@ -123,7 +130,7 @@ class FailedScrapeTask(BaseModel):
     id: int
     site: Literal["easylive", "the_saleroom"]
     url: str
-    task_type: Literal["discover", "listing", "rescrape", "catalogue", "auction_times"]
+    task_type: ScrapeTaskType
     status: Literal["failed"] = "failed"
     scheduled_at: datetime | None = None
     locked_at: datetime | None = None

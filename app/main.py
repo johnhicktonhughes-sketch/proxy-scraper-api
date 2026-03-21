@@ -42,6 +42,7 @@ from app.schemas import (
     AuctionDateSnapshotSummaryItem,
     AuctionDateSnapshotSummaryResponse,
     AuctionTimesQueryResponse,
+    ScrapeTaskType,
 )
 
 
@@ -55,7 +56,14 @@ api_key_header = APIKeyHeader(
 
 ENUMS = {
     "site": ["easylive", "the_saleroom"],
-    "task_type": ["discover", "listing", "rescrape", "catalogue", "auction_times"],
+    "task_type": [
+        "discover",
+        "listing",
+        "rescrape",
+        "catalogue",
+        "auction_times",
+        "auction_listings",
+    ],
     "status": ["pending", "running", "done", "failed"],
 }
 
@@ -95,10 +103,7 @@ def list_scrape_tasks(
     db: Session = Depends(get_db),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    task_type: Literal[
-        "discover", "listing", "rescrape", "catalogue", "auction_times"
-    ]
-    | None = Query(None),
+    task_type: ScrapeTaskType | None = Query(None),
     status: Literal["pending", "running", "done", "failed"] | None = Query(None),
     site: Literal["easylive", "the_saleroom"] | None = Query(None),
     scheduled_at: datetime | None = Query(None),
@@ -902,10 +907,7 @@ def list_running_tasks(
     db: Session = Depends(get_db),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    task_type: Literal[
-        "discover", "listing", "rescrape", "catalogue", "auction_times"
-    ]
-    | None = Query(None),
+    task_type: ScrapeTaskType | None = Query(None),
     site: Literal["easylive", "the_saleroom"] | None = Query(None),
 ):
     query = db.query(ScrapeTask).filter(ScrapeTask.status == "running")
@@ -929,10 +931,7 @@ def list_failed_scrape_tasks(
     db: Session = Depends(get_db),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    task_type: Literal[
-        "discover", "listing", "rescrape", "catalogue", "auction_times"
-    ]
-    | None = Query(None),
+    task_type: ScrapeTaskType | None = Query(None),
     site: Literal["easylive", "the_saleroom"] | None = Query(None),
 ):
     query = db.query(ScrapeTask).filter(ScrapeTask.status == "failed")
